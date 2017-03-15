@@ -6,9 +6,9 @@ import (
 	"math/rand"
 	"sync"
 
-	"./bitsetpool"
-	"./distqueue"
-	"./f32"
+	"github.com/Bithack/go-hnsw/bitsetpool"
+	"github.com/Bithack/go-hnsw/distqueue"
+	"github.com/Bithack/go-hnsw/f32"
 )
 
 type Point []float32
