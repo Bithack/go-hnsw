@@ -396,6 +396,26 @@ func (h *Hnsw) SearchBrute(q *Point, K int) *distqueue.DistQueueClosestLast {
 	return resultSet
 }
 
+// Benchmark test precision by comparing the results of SearchBrute and Search
+func (h *Hnsw) Benchmark(q *Point, ef int, K int) float64 {
+	result := h.Search(q, ef, K)
+	groundTruth := h.SearchBrute(q, K)
+	truth := make([]uint32, 0)
+	for groundTruth.Len() > 0 {
+		truth = append(truth, groundTruth.Pop().ID)
+	}
+	p := 0
+	for result.Len() > 0 {
+		i := result.Pop()
+		for j := 0; j < K; j++ {
+			if truth[j] == i.ID {
+				p++
+			}
+		}
+	}
+	return float64(p) / float64(K)
+}
+
 func (h *Hnsw) Search(q *Point, ef int, K int) *distqueue.DistQueueClosestLast {
 
 	h.RLock()
