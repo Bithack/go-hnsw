@@ -22,10 +22,10 @@ func main() {
 	h := hnsw.New(M, efConstruction, &zero)
 	h.Grow(10000)
 
-	for i := 0; i < 10000; i++ {
+	for i := 1; i <= 10000; i++ {
 		h.Add(randomPoint(), uint32(i))
-		if (i+1)%1000 == 0 {
-			fmt.Printf("%v points added\n", i+1)
+		if (i)%1000 == 0 {
+			fmt.Printf("%v points added\n", i)
 		}
 	}
 
