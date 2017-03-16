@@ -2,6 +2,10 @@
 
 #include "textflag.h"
 
+// This is the 16-byte SSE2 version.
+// It skips pointer alignment checks, since according to the test GO seems to align all []float32 slices on 32-bytes
+// TODO write the 32-byte AVX version!
+
 // func L2Squared(x, y []float32) (sum float32)
 TEXT ·L2Squared(SB), NOSPLIT, $0
 	MOVQ    x_base+0(FP), SI  // SI = &x
@@ -16,27 +20,9 @@ TEXT ·L2Squared(SB), NOSPLIT, $0
     MOVSD $(0.0), X1 // sum = 0	
 
 	XORQ    AX, AX            // i = 0
-	PXOR    X2, X2            // 2 NOP instructions (PXOR) to align
-	PXOR    X3, X3            // loop to cache line
-	MOVQ    DI, CX
-	ANDQ    $0xF, CX          // Align on 16-byte boundary for ADDPS
-	JZ      l2_no_trim      // if CX == 0 { goto l2_no_trim }
+	//PXOR    X2, X2            // 2 NOP instructions (PXOR) to align
+	//PXOR    X3, X3            // loop to cache line
 
-	XORQ $0xF, CX // CX = 4 - floor( BX % 16 / 4 )
-	INCQ CX
-	SHRQ $2, CX
-
-l2_align: // Trim first value(s) in unaligned buffer  do {
-	MOVSS (SI)(AX*4), X2 // X2 = x[i]
-	MULSS X0, X2         // X2 *= a
-	ADDSS (DI)(AX*4), X2 // X2 += y[i]
-	MOVSS X2, (DI)(AX*4) // y[i] = X2
-	INCQ  AX             // i++
-	DECQ  BX
-	JZ    l2_end       // if --BX == 0 { return }
-	LOOP  l2_align     // } while --CX > 0
-
-l2_no_trim:
 	MOVQ   BX, CX
 	ANDQ   $0xF, BX         // BX = len % 16
 	SHRQ   $4, CX           // CX = int( len / 16 )
@@ -74,10 +60,10 @@ l2_tail4_start: // Reset loop counter for 4-wide tail loop
 	JZ   l2_tail_start // if CX == 0 { goto l2_tail_start }
 
 l2_tail4: // Loop unrolled 4x   do {
-	MOVUPS (SI)(AX*4), X2 // X2 = x[i]
-	MULPS  X0, X2         // X2 *= a
-	ADDPS  (DI)(AX*4), X2 // X2 += y[i]
-	MOVUPS X2, (DI)(AX*4) // y[i] = X2
+	MOVUPS (SI)(AX*4), X2   // X2 = x[i]
+    SUBPS  (DI)(AX*4), X2   // X2 -= y[i:i+4]
+	MULPS  X2, X2           // X2 *= X2
+	ADDPS  X2, X1 			// X1 += X2
 	ADDQ   $4, AX         // i += 4
 	LOOP   l2_tail4     // } while --CX > 0
 
@@ -87,10 +73,10 @@ l2_tail_start: // Reset loop counter for 1-wide tail loop
 	JZ   l2_end // if CX == 0 { return }
 
 l2_tail:
-	MOVSS (SI)(AX*4), X1 // X1 = x[i]
-	MULSS X0, X1         // X1 *= a
-	ADDSS (DI)(AX*4), X1 // X1 += y[i]
-	MOVSS X1, (DI)(AX*4) // y[i] = X1
+	MOVSS (SI)(AX*4), X2 // X1 = x[i]
+	SUBSS (DI)(AX*4), X2 // X1 -= y[i]
+	MULSS X2, X2         // X1 *= a
+	ADDSS X2, X1 		 // sum += X2	
 	INCQ  AX             // i++
 	LOOP  l2_tail      // } while --CX > 0
 
