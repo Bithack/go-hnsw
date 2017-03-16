@@ -4,7 +4,9 @@ go-hnsw is a GO implementation of the HNSW approximate nearest-neighbour search 
 
 ## Usage
 
-Simple usage example. Note that both index building and searching can be safely done in parallel with multiple goroutines. 
+Simple usage example. See examples folder for more.
+Note that both index building and searching can be safely done in parallel with multiple goroutines.
+You can always extend the index, even while searching.
 
 ```go
 package main
@@ -31,10 +33,11 @@ func main() {
 	h := hnsw.New(M, efConstruction, &zero)
 	h.Grow(10000)
 
-	for i := 0; i < 10000; i++ {
+    // Note that added ID:s must start from 1
+	for i := 1; i <= 10000; i++ {
 		h.Add(randomPoint(), uint32(i))
-		if (i+1)%1000 == 0 {
-			fmt.Printf("%v points added\n", i+1)
+		if (i)%1000 == 0 {
+			fmt.Printf("%v points added\n", i)
 		}
 	}
 	

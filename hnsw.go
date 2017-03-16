@@ -256,6 +256,10 @@ func (h *Hnsw) Grow(size int) {
 
 func (h *Hnsw) Add(q *Point, id uint32) {
 
+	if id == 0 {
+		panic("Id 0 is reserved, use ID:s starting from 1 when building index")
+	}
+
 	// generate random level
 	curlevel := int(math.Floor(-math.Log(rand.Float64() * h.LevelMult)))
 
@@ -263,8 +267,8 @@ func (h *Hnsw) Add(q *Point, id uint32) {
 	currentMaxLayer := h.nodes[epID].level
 	ep := &distqueue.Item{ID: h.enterpoint, D: DistFast(h.nodes[h.enterpoint].p, q)}
 
-	// Preassigned id (starting from 0), assume Grow has been called in advance
-	newID := uint32(id + 1)
+	// assume Grow has been called in advance
+	newID := id
 	newNode := node{p: q, level: curlevel, friends: make([][]uint32, min(curlevel, currentMaxLayer)+1)}
 
 	// first pass, find another ep if curlevel < maxLayer
@@ -419,7 +423,6 @@ func (h *Hnsw) Search(q *Point, ef int, K int) *distqueue.DistQueueClosestLast {
 	for resultSet.Len() > K {
 		resultSet.Pop()
 	}
-	// actually we should fix the id since our returned ids start from 1
 	return resultSet
 }
 
