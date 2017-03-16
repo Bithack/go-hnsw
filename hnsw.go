@@ -263,7 +263,7 @@ func (h *Hnsw) Add(q *Point, id uint32) {
 	currentMaxLayer := h.nodes[epID].level
 	ep := &distqueue.Item{ID: h.enterpoint, D: DistFast(h.nodes[h.enterpoint].p, q)}
 
-	// Preassigned id (starting from 0), assume Grow has been called
+	// Preassigned id (starting from 0), assume Grow has been called in advance
 	newID := uint32(id + 1)
 	newNode := node{p: q, level: curlevel, friends: make([][]uint32, min(curlevel, currentMaxLayer)+1)}
 
@@ -322,7 +322,6 @@ func (h *Hnsw) Add(q *Point, id uint32) {
 	}
 
 	h.Lock()
-	// h.maxLayer may have changed since we started
 	if curlevel > h.maxLayer {
 		h.maxLayer = curlevel
 		h.enterpoint = newID
@@ -366,8 +365,7 @@ func (h *Hnsw) searchAtLayer(q *Point, resultSet *distqueue.DistQueueClosestLast
 					candidates.PushItem(item)
 				} else if topD > d {
 					// keep length of resultSet to max efConstruction
-					resultSet.Pop()
-					item := resultSet.Push(n, d)
+					item := resultSet.PopAndPush(n, d)
 					candidates.PushItem(item)
 				}
 			}
@@ -376,26 +374,25 @@ func (h *Hnsw) searchAtLayer(q *Point, resultSet *distqueue.DistQueueClosestLast
 	h.bitset.Free(pool)
 }
 
-func (h *Hnsw) SearchBrute(q *Point, ef int) *distqueue.DistQueueClosestLast {
-	resultSet := &distqueue.DistQueueClosestLast{Size: ef + 1}
+// SearchBrute returns the true K nearest neigbours to search point q
+func (h *Hnsw) SearchBrute(q *Point, K int) *distqueue.DistQueueClosestLast {
+	resultSet := &distqueue.DistQueueClosestLast{Size: K}
 	for i := 1; i < len(h.nodes); i++ {
-		n := h.nodes[i]
-		d := DistFast(n.p, q)
-		if resultSet.Len() < ef {
+		d := DistFast(h.nodes[i].p, q)
+		if resultSet.Len() < K {
 			resultSet.Push(uint32(i), d)
 			continue
 		}
 		_, topD := resultSet.Head()
-		if d <= topD {
-			resultSet.Pop()
-			resultSet.Push(uint32(i), d)
+		if d < topD {
+			resultSet.PopAndPush(uint32(i), d)
 			continue
 		}
 	}
 	return resultSet
 }
 
-func (h *Hnsw) Search(q *Point, ef int) *distqueue.DistQueueClosestLast {
+func (h *Hnsw) Search(q *Point, ef int, K int) *distqueue.DistQueueClosestLast {
 
 	h.RLock()
 	currentMaxLayer := h.maxLayer
@@ -419,7 +416,10 @@ func (h *Hnsw) Search(q *Point, ef int) *distqueue.DistQueueClosestLast {
 	}
 	h.searchAtLayer(q, resultSet, ef, ep, 0)
 
-	// actually we should filter out the K nearest here, AND fix the id since our ids start from 1
+	for resultSet.Len() > K {
+		resultSet.Pop()
+	}
+	// actually we should fix the id since our returned ids start from 1
 	return resultSet
 }
 

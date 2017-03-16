@@ -143,6 +143,17 @@ func (pq *DistQueueClosestLast) Push(id uint32, d float32) *Item {
 	return item
 }
 
+// PopAndPush pops the top element and adds a new to the heap in one operation which is faster than two seperate calls to Pop and Push
+func (pq *DistQueueClosestLast) PopAndPush(id uint32, d float32) *Item {
+	if !pq.initiated {
+		pq.Init()
+	}
+	item := &Item{ID: id, D: d}
+	pq.items[1] = item
+	pq.sink(1)
+	return item
+}
+
 func (pq *DistQueueClosestLast) PushItem(item *Item) {
 	if !pq.initiated {
 		pq.Init()
