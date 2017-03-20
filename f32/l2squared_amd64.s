@@ -3,7 +3,7 @@
 #include "textflag.h"
 
 // This is the 16-byte SSE2 version.
-// It skips pointer alignment checks, since according to the test GO seems to align all []float32 slices on 32-bytes
+// It skips pointer alignment checks, since latest GO versions seems to align all []float32 slices on 16-bytes
 // TODO write the 32-byte AVX version!
 
 // func L2Squared(x, y []float32) (sum float32)
@@ -17,11 +17,8 @@ TEXT ·L2Squared(SB), NOSPLIT, $0
 	CMPQ    BX, $0            // if BX == 0 { return }
 	JE      l2_end
 	
-    MOVSD $(0.0), X1 // sum = 0	
-
+    XORPS 	X1, X1 // sum = 0	
 	XORQ    AX, AX            // i = 0
-	//PXOR    X2, X2            // 2 NOP instructions (PXOR) to align
-	//PXOR    X3, X3            // loop to cache line
 
 	MOVQ   BX, CX
 	ANDQ   $0xF, BX         // BX = len % 16
@@ -90,5 +87,5 @@ l2_end:
     SHUFPS $0x93, X0, X0
     ADDPS X0, X1
     
-    MOVUPS    X1, sum+48(FP) // Return final sum.
+    MOVSS    X1, ret+48(FP) // Return final sum.
 	RET
