@@ -16,10 +16,10 @@ func TestSIFT(t *testing.T) {
 
 	efSearch := []int{1, 2, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 300, 400}
 
-	prefix := "siftsmall/siftsmall"
-	//prefix := "sift/sift"
-	dataSize := 10000
-	//dataSize := 1000000
+	//prefix := "siftsmall/siftsmall"
+	prefix := "sift/sift"
+	//dataSize := 10000
+	dataSize := 1000000
 
 	// LOAD QUERIES AND GROUNDTRUTH
 	fmt.Printf("Loading query records\n")
@@ -28,7 +28,7 @@ func TestSIFT(t *testing.T) {
 	// BUILD INDEX
 	var p Point
 	p = make([]float32, 128)
-	h := New(16, 400, &p)
+	h := New(4, 200, p)
 	h.DelaunayType = 1
 	h.Grow(dataSize)
 
@@ -60,7 +60,7 @@ func TestSIFT(t *testing.T) {
 }
 
 type job struct {
-	p  *Point
+	p  Point
 	id uint32
 }
 
@@ -92,7 +92,7 @@ func search(h *Hnsw, queries []Point, truth [][]uint32, efSearch int) float64 {
 		wg.Add(1)
 		go func(queries []Point, truth [][]uint32) {
 			for j := range queries {
-				results := h.Search(&queries[j], efSearch)
+				results := h.Search(queries[j], efSearch, 10)
 				// calc 10-NN precision
 				for results.Len() > 10 {
 					results.Pop()
@@ -188,7 +188,7 @@ func loadDataFromFvec(prefix string, points chan job) {
 		panic("couldn't open data file")
 	}
 	defer f.Close()
-	count := 0
+	count := 1
 	for {
 		d, err := readUint32(f)
 		if err != nil {
@@ -202,7 +202,7 @@ func loadDataFromFvec(prefix string, points chan job) {
 		for i := 0; i < int(d); i++ {
 			vec[i], err = readFloat32(f)
 		}
-		points <- job{p: &vec, id: uint32(count)}
+		points <- job{p: vec, id: uint32(count)}
 		count++
 		if count%10000 == 0 {
 			fmt.Printf("Read %v records\n", count)

@@ -30,7 +30,7 @@ func main() {
 
 	var zero hnsw.Point = make([]float32, 128)
 
-	h := hnsw.New(M, efConstruction, &zero)
+	h := hnsw.New(M, efConstruction, zero)
 	h.Grow(10000)
 
     // Note that added ID:s must start from 1
@@ -50,12 +50,12 @@ func main() {
 	fmt.Printf("%v queries / second (single thread)\n", 1000.0/stop.Seconds())	
 }
 
-func randomPoint() *hnsw.Point {
+func randomPoint() hnsw.Point {
 	var v hnsw.Point = make([]float32, 128)
 	for i := range v {
 		v[i] = rand.Float32()
 	}
-	return &v
+	return v
 }
 
 ```

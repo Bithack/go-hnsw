@@ -4,7 +4,6 @@
 
 // This is the 16-byte SSE2 version.
 // It skips pointer alignment checks, since latest GO versions seems to align all []float32 slices on 16-bytes
-// TODO write the 32-byte AVX version!
 
 // func L2Squared(x, y []float32) (sum float32)
 TEXT ·L2Squared(SB), NOSPLIT, $0

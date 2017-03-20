@@ -13,18 +13,14 @@ import (
 
 type Point []float32
 
-func DistFast(a, b *Point) (r float32) {
-	return f32.L2Squared(*a, *b)
-}
-
-func (a *Point) Size() int {
-	return len(*a) * 4
+func (a Point) Size() int {
+	return len(a) * 4
 }
 
 type node struct {
 	sync.RWMutex
 	locked  bool
-	p       *Point
+	p       Point
 	level   int
 	friends [][]uint32
 }
@@ -36,6 +32,8 @@ type Hnsw struct {
 	efConstruction int
 	linkMode       int
 	DelaunayType   int
+
+	DistFunc func([]float32, []float32) float32
 
 	nodes []node
 
@@ -92,7 +90,7 @@ func (h *Hnsw) Link(first, second uint32, level int) {
 			resultSet := &distqueue.DistQueueClosestLast{Size: len(node.friends[level])}
 
 			for _, n := range node.friends[level] {
-				resultSet.Push(n, DistFast(node.p, h.nodes[n].p))
+				resultSet.Push(n, h.DistFunc(node.p, h.nodes[n].p))
 			}
 			for resultSet.Len() > maxL {
 				resultSet.Pop()
@@ -109,7 +107,7 @@ func (h *Hnsw) Link(first, second uint32, level int) {
 			resultSet := &distqueue.DistQueueClosestFirst{Size: len(node.friends[level])}
 
 			for _, n := range node.friends[level] {
-				resultSet.Push(n, DistFast(node.p, h.nodes[n].p))
+				resultSet.Push(n, h.DistFunc(node.p, h.nodes[n].p))
 			}
 			h.getNeighborsByHeuristicClosestFirst(resultSet, maxL)
 
@@ -141,7 +139,7 @@ func (h *Hnsw) getNeighborsByHeuristicClosestLast(resultSet1 *distqueue.DistQueu
 		e := resultSet.Pop()
 		good := true
 		for _, r := range result {
-			if DistFast(h.nodes[r.ID].p, h.nodes[e.ID].p) < e.D {
+			if h.DistFunc(h.nodes[r.ID].p, h.nodes[e.ID].p) < e.D {
 				good = false
 				break
 			}
@@ -173,7 +171,7 @@ func (h *Hnsw) getNeighborsByHeuristicClosestFirst(resultSet *distqueue.DistQueu
 		e := resultSet.Pop()
 		good := true
 		for _, r := range result {
-			if DistFast(h.nodes[r.ID].p, h.nodes[e.ID].p) < e.D {
+			if h.DistFunc(h.nodes[r.ID].p, h.nodes[e.ID].p) < e.D {
 				good = false
 				break
 			}
@@ -194,7 +192,7 @@ func (h *Hnsw) getNeighborsByHeuristicClosestFirst(resultSet *distqueue.DistQueu
 	}
 }
 
-func New(M int, efConstruction int, first *Point) *Hnsw {
+func New(M int, efConstruction int, first Point) *Hnsw {
 
 	h := Hnsw{}
 	h.M = M
@@ -205,6 +203,8 @@ func New(M int, efConstruction int, first *Point) *Hnsw {
 	h.DelaunayType = 1
 
 	h.bitset = bitsetpool.New()
+
+	h.DistFunc = f32.L2Squared8AVX
 
 	// add first point, it will be our enterpoint (index 0)
 	h.nodes = []node{node{level: 0, p: first}}
@@ -254,7 +254,7 @@ func (h *Hnsw) Grow(size int) {
 
 }
 
-func (h *Hnsw) Add(q *Point, id uint32) {
+func (h *Hnsw) Add(q Point, id uint32) {
 
 	if id == 0 {
 		panic("Id 0 is reserved, use ID:s starting from 1 when building index")
@@ -265,7 +265,7 @@ func (h *Hnsw) Add(q *Point, id uint32) {
 
 	epID := h.enterpoint
 	currentMaxLayer := h.nodes[epID].level
-	ep := &distqueue.Item{ID: h.enterpoint, D: DistFast(h.nodes[h.enterpoint].p, q)}
+	ep := &distqueue.Item{ID: h.enterpoint, D: h.DistFunc(h.nodes[h.enterpoint].p, q)}
 
 	// assume Grow has been called in advance
 	newID := id
@@ -277,7 +277,7 @@ func (h *Hnsw) Add(q *Point, id uint32) {
 		for changed {
 			changed = false
 			for _, i := range h.getFriends(ep.ID, level) {
-				d := DistFast(h.nodes[i].p, q)
+				d := h.DistFunc(h.nodes[i].p, q)
 				if d < ep.D {
 					ep = &distqueue.Item{ID: i, D: d}
 					changed = true
@@ -312,7 +312,7 @@ func (h *Hnsw) Add(q *Point, id uint32) {
 
 	h.Lock()
 	// Add it and increase slice length if neccessary
-	if len(h.nodes) < int(newID+1) {
+	if len(h.nodes) < int(newID)+1 {
 		h.nodes = h.nodes[0 : newID+1]
 	}
 	h.nodes[newID] = newNode
@@ -333,7 +333,7 @@ func (h *Hnsw) Add(q *Point, id uint32) {
 	h.Unlock()
 }
 
-func (h *Hnsw) searchAtLayer(q *Point, resultSet *distqueue.DistQueueClosestLast, efConstruction int, ep *distqueue.Item, level int) {
+func (h *Hnsw) searchAtLayer(q Point, resultSet *distqueue.DistQueueClosestLast, efConstruction int, ep *distqueue.Item, level int) {
 
 	var pool, visited = h.bitset.Get()
 	//visited := make(map[uint32]bool)
@@ -355,22 +355,21 @@ func (h *Hnsw) searchAtLayer(q *Point, resultSet *distqueue.DistQueueClosestLast
 			break
 		}
 
-		friends := h.getFriends(c.ID, level)
-
-		for _, n := range friends {
-			if !visited.Test(uint(n)) {
-				//if visited[n] != true {
-				visited.Set(uint(n))
-				//	visited[n] = true
-				d := DistFast(q, h.nodes[n].p)
-				_, topD := resultSet.Top()
-				if resultSet.Len() < efConstruction {
-					item := resultSet.Push(n, d)
-					candidates.PushItem(item)
-				} else if topD > d {
-					// keep length of resultSet to max efConstruction
-					item := resultSet.PopAndPush(n, d)
-					candidates.PushItem(item)
+		if len(h.nodes[c.ID].friends) >= level+1 {
+			friends := h.nodes[c.ID].friends[level]
+			for _, n := range friends {
+				if !visited.Test(uint(n)) {
+					visited.Set(uint(n))
+					d := h.DistFunc(q, h.nodes[n].p)
+					_, topD := resultSet.Top()
+					if resultSet.Len() < efConstruction {
+						item := resultSet.Push(n, d)
+						candidates.PushItem(item)
+					} else if topD > d {
+						// keep length of resultSet to max efConstruction
+						item := resultSet.PopAndPush(n, d)
+						candidates.PushItem(item)
+					}
 				}
 			}
 		}
@@ -379,10 +378,10 @@ func (h *Hnsw) searchAtLayer(q *Point, resultSet *distqueue.DistQueueClosestLast
 }
 
 // SearchBrute returns the true K nearest neigbours to search point q
-func (h *Hnsw) SearchBrute(q *Point, K int) *distqueue.DistQueueClosestLast {
+func (h *Hnsw) SearchBrute(q Point, K int) *distqueue.DistQueueClosestLast {
 	resultSet := &distqueue.DistQueueClosestLast{Size: K}
 	for i := 1; i < len(h.nodes); i++ {
-		d := DistFast(h.nodes[i].p, q)
+		d := h.DistFunc(h.nodes[i].p, q)
 		if resultSet.Len() < K {
 			resultSet.Push(uint32(i), d)
 			continue
@@ -397,7 +396,7 @@ func (h *Hnsw) SearchBrute(q *Point, K int) *distqueue.DistQueueClosestLast {
 }
 
 // Benchmark test precision by comparing the results of SearchBrute and Search
-func (h *Hnsw) Benchmark(q *Point, ef int, K int) float64 {
+func (h *Hnsw) Benchmark(q Point, ef int, K int) float64 {
 	result := h.Search(q, ef, K)
 	groundTruth := h.SearchBrute(q, K)
 	truth := make([]uint32, 0)
@@ -416,11 +415,11 @@ func (h *Hnsw) Benchmark(q *Point, ef int, K int) float64 {
 	return float64(p) / float64(K)
 }
 
-func (h *Hnsw) Search(q *Point, ef int, K int) *distqueue.DistQueueClosestLast {
+func (h *Hnsw) Search(q Point, ef int, K int) *distqueue.DistQueueClosestLast {
 
 	h.RLock()
 	currentMaxLayer := h.maxLayer
-	ep := &distqueue.Item{ID: h.enterpoint, D: DistFast(h.nodes[h.enterpoint].p, q)}
+	ep := &distqueue.Item{ID: h.enterpoint, D: h.DistFunc(h.nodes[h.enterpoint].p, q)}
 	h.RUnlock()
 
 	resultSet := &distqueue.DistQueueClosestLast{Size: ef + 1}
@@ -430,7 +429,7 @@ func (h *Hnsw) Search(q *Point, ef int, K int) *distqueue.DistQueueClosestLast {
 		for changed {
 			changed = false
 			for _, i := range h.getFriends(ep.ID, level) {
-				d := DistFast(h.nodes[i].p, q)
+				d := h.DistFunc(h.nodes[i].p, q)
 				if d < ep.D {
 					ep.ID, ep.D = i, d
 					changed = true

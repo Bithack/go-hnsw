@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"time"
 
-	".."
+	hnsw "github.com/Bithack/go-hnsw"
 )
 
 func main() {
@@ -19,7 +19,7 @@ func main() {
 
 	var zero hnsw.Point = make([]float32, 128)
 
-	h := hnsw.New(M, efConstruction, &zero)
+	h := hnsw.New(M, efConstruction, zero)
 	h.Grow(10000)
 
 	for i := 1; i <= 10000; i++ {
@@ -30,7 +30,7 @@ func main() {
 	}
 
 	fmt.Printf("Generating queries and calculating true answers using bruteforce search...\n")
-	queries := make([]*hnsw.Point, 1000)
+	queries := make([]hnsw.Point, 1000)
 	truth := make([][]uint32, 1000)
 	for i := range queries {
 		queries[i] = randomPoint()
@@ -63,10 +63,10 @@ func main() {
 
 }
 
-func randomPoint() *hnsw.Point {
+func randomPoint() hnsw.Point {
 	var v hnsw.Point = make([]float32, 128)
 	for i := range v {
 		v[i] = rand.Float32()
 	}
-	return &v
+	return v
 }

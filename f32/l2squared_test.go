@@ -51,6 +51,13 @@ func TestAlignment(t *testing.T) {
 	}
 }
 
+func Test24(t *testing.T) {
+	a := []float32{1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4}
+	b := []float32{4, 3, 1, 4, 4, 3, 1, 4, 4, 3, 1, 4, 4, 3, 1, 4, 4, 3, 1, 4, 4, 3, 1, 4}
+	assert.Equal(t, DistGo(a, b), L2Squared(a, b), "Incorrect")
+	assert.Equal(t, DistGo(b, a), L2Squared8AVX(a, b), "8avx Incorrect")
+}
+
 func Test128(t *testing.T) {
 	a := []float32{1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
 		1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
@@ -63,6 +70,7 @@ func Test128(t *testing.T) {
 		4, 3, 1, 4, 4, 3, 1, 4, 4, 3, 1, 4, 4, 3, 1, 4, 4, 3, 1, 4, 4, 3, 1, 4, 4, 3, 1, 4, 4, 3, 1, 4,
 	}
 	assert.Equal(t, DistGo(a, b), L2Squared(a, b), "Incorrect")
+	assert.Equal(t, DistGo(b, a), L2Squared8AVX(a, b), "8avx Incorrect")
 }
 
 func TestBenchmark(t *testing.T) {
@@ -77,12 +85,21 @@ func TestBenchmark(t *testing.T) {
 		4, 3, 1, 4, 4, 3, 1, 4, 4, 3, 1, 4, 4, 3, 1, 4, 4, 3, 1, 4, 4, 3, 1, 4, 4, 3, 1, 4, 4, 3, 1, 4,
 	}
 	l := 10000000
+	fmt.Printf("Testing %v calls with %v dim []float32\n", l, len(a2))
+
 	start := time.Now()
 	for i := 0; i < l; i++ {
 		L2Squared(a2, b2)
 	}
 	stop := time.Since(start)
 	fmt.Printf("l2squared Done in %v. %v calcs / second\n", stop, float64(l)/stop.Seconds())
+
+	start = time.Now()
+	for i := 0; i < l; i++ {
+		L2Squared8AVX(a2, b2)
+	}
+	stop = time.Since(start)
+	fmt.Printf("l2squared8AVX Done in %v. %v calcs / second\n", stop, float64(l)/stop.Seconds())
 
 	start = time.Now()
 	for i := 0; i < l; i++ {
