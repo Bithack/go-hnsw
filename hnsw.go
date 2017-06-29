@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/Bithack/go-hnsw/bitsetpool"
 	"github.com/Bithack/go-hnsw/distqueue"
@@ -48,15 +49,18 @@ type Hnsw struct {
 	enterpoint uint32
 }
 
-func Load(filename string) (*Hnsw, error) {
+// Load opens a index file previously written by Save(). Returnes a new index and the timestamp the file was written
+func Load(filename string) (*Hnsw, int64, error) {
 	f, err := os.Open(filename)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	z, err := gzip.NewReader(f)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
+
+	timestamp := readInt64(z)
 
 	h := new(Hnsw)
 	h.M = readInt32(z)
@@ -102,7 +106,7 @@ func Load(filename string) (*Hnsw, error) {
 	z.Close()
 	f.Close()
 
-	return h, nil
+	return h, timestamp, nil
 }
 
 // Save writes to current index to a gzipped binary data file
@@ -112,6 +116,10 @@ func (h *Hnsw) Save(filename string) error {
 		return err
 	}
 	z := gzip.NewWriter(f)
+
+	timestamp := time.Now().Unix()
+
+	writeInt64(timestamp, z)
 
 	writeInt32(h.M, z)
 	writeInt32(h.M0, z)
@@ -155,6 +163,13 @@ func (h *Hnsw) Save(filename string) error {
 	return nil
 }
 
+func writeInt64(v int64, w io.Writer) {
+	err := binary.Write(w, binary.LittleEndian, &v)
+	if err != nil {
+		panic(err)
+	}
+}
+
 func writeInt32(v int, w io.Writer) {
 	i := int32(v)
 	err := binary.Write(w, binary.LittleEndian, &i)
@@ -177,6 +192,14 @@ func writeFloat64(v float64, w io.Writer) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func readInt64(r io.Reader) (v int64) {
+	err := binary.Read(r, binary.LittleEndian, &v)
+	if err != nil {
+		panic(err)
+	}
+	return
 }
 
 func readFloat64(r io.Reader) (v float64) {
