@@ -1,9 +1,13 @@
 package hnsw
 
 import (
+	"compress/gzip"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
+	"os"
 	"sync"
 
 	"github.com/Bithack/go-hnsw/bitsetpool"
@@ -42,6 +46,145 @@ type Hnsw struct {
 	LevelMult  float64
 	maxLayer   int
 	enterpoint uint32
+}
+
+func Load(filename string) (*Hnsw, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	z, err := gzip.NewReader(f)
+	if err != nil {
+		return nil, err
+	}
+
+	h := new(Hnsw)
+	h.M = readInt32(z)
+	h.M0 = readInt32(z)
+	h.efConstruction = readInt32(z)
+	h.linkMode = readInt32(z)
+	h.DelaunayType = readInt32(z)
+	h.LevelMult = readFloat64(z)
+	h.maxLayer = readInt32(z)
+	h.enterpoint = uint32(readInt32(z))
+
+	h.DistFunc = f32.L2Squared8AVX
+	h.bitset = bitsetpool.New()
+
+	l := readInt32(z)
+	h.nodes = make([]node, l)
+
+	for i := range h.nodes {
+
+		l := readInt32(z)
+		h.nodes[i].p = make([]float32, l)
+
+		err = binary.Read(z, binary.LittleEndian, h.nodes[i].p)
+		if err != nil {
+			panic(err)
+		}
+		h.nodes[i].level = readInt32(z)
+
+		l = readInt32(z)
+		h.nodes[i].friends = make([][]uint32, l)
+
+		for j := range h.nodes[i].friends {
+			l := readInt32(z)
+			h.nodes[i].friends[j] = make([]uint32, l)
+			err = binary.Read(z, binary.LittleEndian, h.nodes[i].friends[j])
+			if err != nil {
+				panic(err)
+			}
+		}
+
+	}
+
+	z.Close()
+	f.Close()
+
+	return h, nil
+}
+
+// Save writes to current index to a gzipped binary data file
+func (h *Hnsw) Save(filename string) error {
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	z := gzip.NewWriter(f)
+
+	writeInt32(h.M, z)
+	writeInt32(h.M0, z)
+	writeInt32(h.efConstruction, z)
+	writeInt32(h.linkMode, z)
+	writeInt32(h.DelaunayType, z)
+	writeFloat64(h.LevelMult, z)
+	writeInt32(h.maxLayer, z)
+	writeInt32(int(h.enterpoint), z)
+
+	l := len(h.nodes)
+	writeInt32(l, z)
+
+	if err != nil {
+		return err
+	}
+	for _, n := range h.nodes {
+		l := len(n.p)
+		writeInt32(l, z)
+		err = binary.Write(z, binary.LittleEndian, []float32(n.p))
+		if err != nil {
+			panic(err)
+		}
+		writeInt32(n.level, z)
+
+		l = len(n.friends)
+		writeInt32(l, z)
+		for _, f := range n.friends {
+			l := len(f)
+			writeInt32(l, z)
+			err = binary.Write(z, binary.LittleEndian, f)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+
+	z.Close()
+	f.Close()
+
+	return nil
+}
+
+func writeInt32(v int, w io.Writer) {
+	i := int32(v)
+	err := binary.Write(w, binary.LittleEndian, &i)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func readInt32(r io.Reader) int {
+	var i int32
+	err := binary.Read(r, binary.LittleEndian, &i)
+	if err != nil {
+		panic(err)
+	}
+	return int(i)
+}
+
+func writeFloat64(v float64, w io.Writer) {
+	err := binary.Write(w, binary.LittleEndian, &v)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func readFloat64(r io.Reader) (v float64) {
+	err := binary.Read(r, binary.LittleEndian, &v)
+	if err != nil {
+		panic(err)
+	}
+	return
 }
 
 func (h *Hnsw) getFriends(n uint32, level int) []uint32 {

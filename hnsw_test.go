@@ -10,21 +10,44 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func TestSIFT(t *testing.T) {
+var prefix = "siftsmall/siftsmall"
+var dataSize = 10000
+var efSearch = []int{1, 2, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 300, 400}
+var queries []Point
+var truth [][]uint32
 
-	efSearch := []int{1, 2, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 300, 400}
-
-	//prefix := "siftsmall/siftsmall"
-	prefix := "sift/sift"
-	//dataSize := 10000
-	dataSize := 1000000
-
+func TestMain(m *testing.M) {
 	// LOAD QUERIES AND GROUNDTRUTH
 	fmt.Printf("Loading query records\n")
-	queries, truth := loadQueriesFromFvec(prefix)
+	queries, truth = loadQueriesFromFvec(prefix)
+	os.Exit(m.Run())
+}
+func TestSaveLoad(t *testing.T) {
+	h := buildIndex()
+	testSearch(h)
 
+	fmt.Printf("Saving to index.dat\n")
+	err := h.Save("index.dat")
+	assert.Nil(t, err)
+
+	fmt.Printf("Loading from index.dat\n")
+	h2, err := Load("index.dat")
+	assert.Nil(t, err)
+
+	fmt.Printf(h2.Stats())
+	testSearch(h2)
+}
+
+func TestSIFT(t *testing.T) {
+	h := buildIndex()
+	testSearch(h)
+}
+
+func buildIndex() *Hnsw {
 	// BUILD INDEX
 	var p Point
 	p = make([]float32, 128)
@@ -39,9 +62,12 @@ func TestSIFT(t *testing.T) {
 	buildFromChan(h, points)
 	buildStop := time.Since(buildStart)
 	fmt.Printf("Index build in %v\n", buildStop)
-
 	fmt.Printf(h.Stats())
 
+	return h
+}
+
+func testSearch(h *Hnsw) {
 	// SEARCH
 	for _, ef := range efSearch {
 		fmt.Printf("Now searching with ef=%v\n", ef)
@@ -204,7 +230,7 @@ func loadDataFromFvec(prefix string, points chan job) {
 		}
 		points <- job{p: vec, id: uint32(count)}
 		count++
-		if count%10000 == 0 {
+		if count%1000 == 0 {
 			fmt.Printf("Read %v records\n", count)
 		}
 	}
